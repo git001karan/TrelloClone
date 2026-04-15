@@ -22,7 +22,7 @@ const updateCardSchema = z.object({
 
 const moveCardSchema = z.object({
   targetListId: z.string().min(1, "Target list ID is required"),
-  newPosition: z.number().positive("Position must be positive"),
+  newPosition: z.number().min(0, "Position must be non-negative"),
 });
 
 // ─── Routes (all authenticated) ──────────────────────

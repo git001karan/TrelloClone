@@ -25,11 +25,11 @@ import { useCardFilters } from "@/hooks/use-card-filters";
 import { useAuth } from "@/hooks/use-auth";
 import { useBoardSocket } from "@/hooks/use-board-socket";
 import { AppSidebar } from "@/components/layout/app-sidebar";
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
+import { toast } from "sonner";
 import { boardKeys } from "@/lib/board-query-keys";
 import { mapApiBoardToDummy, type ApiBoard } from "@/lib/map-api-board";
-import { dummyBoard, type DummyBoard, type DummyCard, type DummyList } from "@/lib/dummy-data";
-import { POSITION_GAP } from "@trello-clone/shared";
+import { dummyBoard, type DummyBoard, type DummyCard } from "@/lib/dummy-data";
 
 export interface BoardViewProps {
   /** When set (e.g. from `/board/[id]`), load that board; otherwise first board from API */
@@ -132,51 +132,62 @@ export function BoardView({ boardId: boardIdProp }: BoardViewProps) {
   } = useBoardDnD(board, setBoard, handleMoveCard, handleMoveList);
 
   const handleAddCard = useCallback(
-    (listId: string, title: string) => {
-      setBoard((prev) => ({
-        ...prev,
-        lists: prev.lists.map((list) => {
-          if (list.id !== listId) return list;
-          const maxPosition =
-            list.cards.length > 0
-              ? Math.max(...list.cards.map((c) => c.position))
-              : 0;
-          const newCard: DummyCard = {
-            id: `card-${Date.now()}`,
-            title,
-            description: null,
-            position: maxPosition + POSITION_GAP,
-            dueDate: null,
-            listId,
-            labels: [],
-            assignees: [],
-            _count: { activityLogs: 0 },
-          };
-          return { ...list, cards: [...list.cards, newCard] };
-        }),
-      }));
+    async (listId: string, title: string) => {
+      try {
+        // Create card via API so it gets a real DB ID
+        const newCard = await apiPost<{
+          id: string; title: string; description: string | null;
+          position: number; dueDate: string | null; listId: string;
+          labels: []; assignees: []; _count: { activityLogs: number };
+        }, { title: string; listId: string }>("/cards", { title, listId });
+
+        setBoard((prev) => ({
+          ...prev,
+          lists: prev.lists.map((list) => {
+            if (list.id !== listId) return list;
+            const card: DummyCard = {
+              id: newCard.id,
+              title: newCard.title,
+              description: null,
+              position: newCard.position,
+              dueDate: null,
+              listId,
+              labels: [],
+              assignees: [],
+              _count: { activityLogs: 0 },
+            };
+            return { ...list, cards: [...list.cards, card] };
+          }),
+        }));
+      } catch {
+        toast.error("Could not add card");
+      }
     },
     [setBoard]
   );
 
   const handleAddList = useCallback(
-    (title: string) => {
-      setBoard((prev) => {
-        const maxPosition =
-          prev.lists.length > 0
-            ? Math.max(...prev.lists.map((l) => l.position))
-            : 0;
-        const newList: DummyList = {
-          id: `list-${Date.now()}`,
-          title,
-          position: maxPosition + POSITION_GAP,
-          boardId: prev.id,
-          cards: [],
-        };
-        return { ...prev, lists: [...prev.lists, newList] };
-      });
+    async (title: string) => {
+      try {
+        const newList = await apiPost<{
+          id: string; title: string; position: number; boardId: string;
+        }, { title: string; boardId: string }>("/lists", { title, boardId: board.id });
+
+        setBoard((prev) => ({
+          ...prev,
+          lists: [...prev.lists, {
+            id: newList.id,
+            title: newList.title,
+            position: newList.position,
+            boardId: newList.boardId,
+            cards: [],
+          }],
+        }));
+      } catch {
+        toast.error("Could not add list");
+      }
     },
-    [setBoard]
+    [setBoard, board.id]
   );
 
   const handleUpdateListTitle = useCallback(

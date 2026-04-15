@@ -19,7 +19,7 @@ const updateListSchema = z.object({
 
 const moveListSchema = z.object({
   boardId: z.string().min(1),
-  newPosition: z.number().positive("Position must be positive"),
+  newPosition: z.number().min(0, "Position must be non-negative"),
 });
 
 // ─── Routes (all authenticated) ──────────────────────
