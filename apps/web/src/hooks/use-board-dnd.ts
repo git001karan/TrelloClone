@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo, useRef, type Dispatch, type SetStateAct
 import {
   PointerSensor,
   TouchSensor,
+  KeyboardSensor,
   useSensor,
   useSensors,
   type DragStartEvent,
@@ -11,10 +12,9 @@ import {
   type DragEndEvent,
   type UniqueIdentifier,
 } from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { getPositionAtIndex } from "@/lib/position";
 import type { DummyBoard, DummyCard, DummyList } from "@/lib/dummy-data";
-
-// ─── Types ───────────────────────────────────────────
 
 export type DragItemType = "card" | "list";
 
@@ -23,15 +23,12 @@ export interface DragState {
   activeType: DragItemType | null;
   activeCard: DummyCard | null;
   activeList: DummyList | null;
-  overId: UniqueIdentifier | null;
-  overListId: string | null;
 }
 
 export interface MoveCardPayload {
   cardId: string;
   targetListId: string;
   newPosition: number;
-  /** Snapshot before this move — used to rollback on API failure */
   previousBoard: DummyBoard;
 }
 
@@ -41,34 +38,14 @@ export interface MoveListPayload {
   previousBoard: DummyBoard;
 }
 
-// ─── Helper: Find which list a card belongs to ───────
-
-function findListByCardId(
-  lists: DummyList[],
-  cardId: string
-): DummyList | undefined {
-  return lists.find((list) =>
-    list.cards.some((card) => card.id === cardId)
-  );
+function findListByCardId(lists: DummyList[], cardId: string): DummyList | undefined {
+  return lists.find((list) => list.cards.some((card) => card.id === cardId));
 }
-
-// ─── Helper: Check if ID is a list ──────────────────
 
 function isListId(id: string, lists: DummyList[]): boolean {
   return lists.some((list) => list.id === id);
 }
 
-/**
- * useBoardDnD — Custom hook encapsulating all drag-and-drop logic.
- *
- * Handles three scenarios:
- *   1. Reorder cards WITHIN the same list
- *   2. Move cards BETWEEN different lists
- *   3. Reorder lists horizontally
- *
- * Uses the Decimal Positioning System for position calculations,
- * ensuring only the moved item gets a new position value.
- */
 export function useBoardDnD(
   board: DummyBoard,
   setBoard: Dispatch<SetStateAction<DummyBoard>>,
@@ -80,90 +57,58 @@ export function useBoardDnD(
     activeType: null,
     activeCard: null,
     activeList: null,
-    overId: null,
-    overListId: null,
   });
 
-  // Track the original state before drag for rollback on error
+  // Use a ref to track activeType so handleDragEnd always sees the latest value
+  const activeTypeRef = useRef<DragItemType | null>(null);
   const preDragBoardRef = useRef<DummyBoard | null>(null);
 
-  // ─── Sensors ─────────────────────────────────────
-  // Pointer sensor with 5px activation distance prevents accidental drags
-  // Touch sensor with 200ms delay for mobile
   const pointerSensor = useSensor(PointerSensor, {
-    activationConstraint: {
-      distance: 5,
-    },
+    activationConstraint: { distance: 8 },
   });
   const touchSensor = useSensor(TouchSensor, {
-    activationConstraint: {
-      delay: 200,
-      tolerance: 5,
-    },
+    activationConstraint: { delay: 250, tolerance: 8 },
   });
-  const sensors = useSensors(pointerSensor, touchSensor);
+  const keyboardSensor = useSensor(KeyboardSensor, {
+    coordinateGetter: sortableKeyboardCoordinates,
+  });
+  const sensors = useSensors(pointerSensor, touchSensor, keyboardSensor);
 
-  // ─── Sorted list IDs for SortableContext ─────────
   const sortedListIds = useMemo(
-    () =>
-      [...board.lists]
-        .sort((a, b) => a.position - b.position)
-        .map((l) => l.id),
+    () => [...board.lists].sort((a, b) => a.position - b.position).map((l) => l.id),
     [board.lists]
   );
 
-  // ─── DragStart ───────────────────────────────────
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
-      const { active } = event;
-      const id = active.id as string;
-
-      // Save pre-drag state for potential rollback
+      const id = event.active.id as string;
       preDragBoardRef.current = JSON.parse(JSON.stringify(board));
 
       if (isListId(id, board.lists)) {
-        const list = board.lists.find((l) => l.id === id);
-        setDragState({
-          activeId: id,
-          activeType: "list",
-          activeCard: null,
-          activeList: list || null,
-          overId: null,
-          overListId: null,
-        });
+        const list = board.lists.find((l) => l.id === id) ?? null;
+        activeTypeRef.current = "list";
+        setDragState({ activeId: id, activeType: "list", activeCard: null, activeList: list });
       } else {
         const list = findListByCardId(board.lists, id);
-        const card = list?.cards.find((c) => c.id === id);
-        setDragState({
-          activeId: id,
-          activeType: "card",
-          activeCard: card || null,
-          activeList: null,
-          overId: null,
-          overListId: list?.id || null,
-        });
+        const card = list?.cards.find((c) => c.id === id) ?? null;
+        activeTypeRef.current = "card";
+        setDragState({ activeId: id, activeType: "card", activeCard: card, activeList: null });
       }
     },
     [board]
   );
 
-  // ─── DragOver ────────────────────────────────────
-  // This fires CONTINUOUSLY during drag. For card drags,
-  // we move cards between lists in real-time (optimistic).
   const handleDragOver = useCallback(
     (event: DragOverEvent) => {
       const { active, over } = event;
       if (!over || !active) return;
+      if (activeTypeRef.current !== "card") return;
 
       const activeId = active.id as string;
       const overId = over.id as string;
-
-      // Only handle card-level cross-list moves
-      if (dragState.activeType !== "card") return;
       if (activeId === overId) return;
 
       const activeList = findListByCardId(board.lists, activeId);
-      // Determine the target list — either the card's list or the list itself
       let overList: DummyList | undefined;
 
       if (isListId(overId, board.lists)) {
@@ -173,170 +118,132 @@ export function useBoardDnD(
       }
 
       if (!activeList || !overList) return;
-
-      // If same list, skip — sorting handles this in DragEnd
       if (activeList.id === overList.id) return;
 
-      // CROSS-LIST MOVE: Move the card from one list to another
+      // Cross-list move — update UI optimistically
       setBoard((prev) => {
-        const activeListData = prev.lists.find((l) => l.id === activeList.id);
-        const overListData = prev.lists.find((l) => l.id === overList!.id);
-        if (!activeListData || !overListData) return prev;
+        const srcList = prev.lists.find((l) => l.id === activeList.id);
+        const dstList = prev.lists.find((l) => l.id === overList!.id);
+        if (!srcList || !dstList) return prev;
 
-        const movingCard = activeListData.cards.find((c) => c.id === activeId);
+        const movingCard = srcList.cards.find((c) => c.id === activeId);
         if (!movingCard) return prev;
 
-        // Find the index where we should insert in the target list
-        const overCards = [...overListData.cards].sort(
-          (a, b) => a.position - b.position
-        );
-        let insertIndex = overCards.length; // Default: end
+        const dstCards = [...dstList.cards].sort((a, b) => a.position - b.position);
+        let insertIndex = dstCards.length;
 
         if (!isListId(overId, prev.lists)) {
-          // Hovering over a card — insert at that card's index
-          const overCardIndex = overCards.findIndex((c) => c.id === overId);
-          if (overCardIndex !== -1) {
-            insertIndex = overCardIndex;
-          }
+          const idx = dstCards.findIndex((c) => c.id === overId);
+          if (idx !== -1) insertIndex = idx;
         }
 
-        // Calculate new position using decimal positioning
-        const otherPositions = overCards.map((c) => c.position);
-        const newPosition = getPositionAtIndex(otherPositions, insertIndex);
-
-        const updatedCard = {
-          ...movingCard,
-          listId: overList!.id,
-          position: newPosition,
-        };
+        const newPosition = getPositionAtIndex(dstCards.map((c) => c.position), insertIndex);
+        const updatedCard = { ...movingCard, listId: overList!.id, position: newPosition };
 
         return {
           ...prev,
           lists: prev.lists.map((list) => {
             if (list.id === activeList.id) {
-              // Remove from source list
-              return {
-                ...list,
-                cards: list.cards.filter((c) => c.id !== activeId),
-              };
+              return { ...list, cards: list.cards.filter((c) => c.id !== activeId) };
             }
             if (list.id === overList!.id) {
-              // Add to target list at correct position
               const newCards = [...list.cards.filter((c) => c.id !== activeId)];
               newCards.splice(insertIndex, 0, updatedCard);
-              return {
-                ...list,
-                cards: newCards,
-              };
+              return { ...list, cards: newCards };
             }
             return list;
           }),
         };
       });
     },
-    [board, dragState.activeType, setBoard]
+    [board, setBoard]
   );
 
-  // ─── DragEnd ─────────────────────────────────────
-  // Final position is calculated here. This is where we
-  // commit the move and fire the mutation callback.
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
-      
-      // Reset drag state first
-      setDragState({
-        activeId: null,
-        activeType: null,
-        activeCard: null,
-        activeList: null,
-        overId: null,
-        overListId: null,
-      });
+      const type = activeTypeRef.current; // Read from ref — never stale
 
-      if (!over || active.id === over.id) return;
+      // Reset state
+      activeTypeRef.current = null;
+      setDragState({ activeId: null, activeType: null, activeCard: null, activeList: null });
+
+      if (!over) {
+        // Cancelled — rollback
+        if (preDragBoardRef.current) {
+          setBoard(preDragBoardRef.current);
+        }
+        preDragBoardRef.current = null;
+        return;
+      }
 
       const activeId = active.id as string;
       const overId = over.id as string;
 
-      // ─── List Reorder ────────────────────────
-      if (dragState.activeType === "list") {
+      // ── List reorder ──────────────────────────────
+      if (type === "list") {
+        if (activeId === overId) { preDragBoardRef.current = null; return; }
+
         setBoard((prev) => {
-          const previousBoard = JSON.parse(JSON.stringify(prev)) as DummyBoard;
-          const sortedLists = [...prev.lists].sort(
-            (a, b) => a.position - b.position
-          );
+          const previousBoard = preDragBoardRef.current ?? JSON.parse(JSON.stringify(prev));
+          preDragBoardRef.current = null;
 
-          const activeIndex = sortedLists.findIndex(
-            (l) => l.id === activeId
-          );
-          const overIndex = sortedLists.findIndex((l) => l.id === overId);
+          const sorted = [...prev.lists].sort((a, b) => a.position - b.position);
+          const activeIdx = sorted.findIndex((l) => l.id === activeId);
+          const overIdx = sorted.findIndex((l) => l.id === overId);
+          if (activeIdx === -1 || overIdx === -1 || activeIdx === overIdx) return prev;
 
-          if (activeIndex === -1 || overIndex === -1) return prev;
-          if (activeIndex === overIndex) return prev;
+          const otherPositions = sorted.filter((l) => l.id !== activeId).map((l) => l.position);
+          const newPosition = getPositionAtIndex(otherPositions, overIdx);
 
-          // Calculate new position using decimal positioning
-          const otherPositions = sortedLists
-            .filter((l) => l.id !== activeId)
-            .map((l) => l.position);
-          const newPosition = getPositionAtIndex(otherPositions, overIndex);
-
-          onMoveList?.({
-            listId: activeId,
-            newPosition,
-            previousBoard,
-          });
+          onMoveList?.({ listId: activeId, newPosition, previousBoard });
 
           return {
             ...prev,
-            lists: prev.lists.map((list) =>
-              list.id === activeId
-                ? { ...list, position: newPosition }
-                : list
-            ),
+            lists: prev.lists.map((l) => l.id === activeId ? { ...l, position: newPosition } : l),
           };
         });
         return;
       }
 
-      // ─── Card Reorder (within same list or finalize cross-list) ──
-      if (dragState.activeType === "card") {
+      // ── Card reorder / finalize cross-list ────────
+      if (type === "card") {
         setBoard((prev) => {
-          const previousBoard = JSON.parse(JSON.stringify(prev)) as DummyBoard;
+          const previousBoard = preDragBoardRef.current ?? JSON.parse(JSON.stringify(prev));
+          preDragBoardRef.current = null;
+
+          // After handleDragOver, the card is already in its target list
           const currentList = findListByCardId(prev.lists, activeId);
           if (!currentList) return prev;
 
-          const sortedCards = [...currentList.cards].sort(
-            (a, b) => a.position - b.position
-          );
+          const sorted = [...currentList.cards].sort((a, b) => a.position - b.position);
+          const activeIdx = sorted.findIndex((c) => c.id === activeId);
 
-          const activeIndex = sortedCards.findIndex(
-            (c) => c.id === activeId
-          );
-          let overIndex: number;
-
+          // Determine overIndex
+          let overIdx: number;
           if (isListId(overId, prev.lists)) {
-            // Dropped on an empty list — card should already be moved by DragOver
-            overIndex = 0;
+            // Dropped directly on a list container
+            overIdx = sorted.length - 1;
           } else {
-            overIndex = sortedCards.findIndex((c) => c.id === overId);
+            overIdx = sorted.findIndex((c) => c.id === overId);
           }
 
-          if (activeIndex === -1 || overIndex === -1) return prev;
-          if (activeIndex === overIndex) return prev;
+          // If overIdx not found (cross-list drop already handled by DragOver), just persist current position
+          if (activeIdx === -1) return prev;
 
-          // Calculate new position
-          const otherPositions = sortedCards
-            .filter((c) => c.id !== activeId)
-            .map((c) => c.position);
-          const newPosition = getPositionAtIndex(otherPositions, overIndex);
+          const card = sorted[activeIdx];
+          const targetListId = currentList.id;
 
-          onMoveCard?.({
-            cardId: activeId,
-            targetListId: currentList.id,
-            newPosition,
-            previousBoard,
-          });
+          if (overIdx === -1 || activeIdx === overIdx) {
+            // Just persist the current position from DragOver
+            onMoveCard?.({ cardId: activeId, targetListId, newPosition: card.position, previousBoard });
+            return prev;
+          }
+
+          const otherPositions = sorted.filter((c) => c.id !== activeId).map((c) => c.position);
+          const newPosition = getPositionAtIndex(otherPositions, overIdx);
+
+          onMoveCard?.({ cardId: activeId, targetListId, newPosition, previousBoard });
 
           return {
             ...prev,
@@ -344,35 +251,23 @@ export function useBoardDnD(
               if (list.id !== currentList.id) return list;
               return {
                 ...list,
-                cards: list.cards.map((card) =>
-                  card.id === activeId
-                    ? { ...card, position: newPosition }
-                    : card
-                ),
+                cards: list.cards.map((c) => c.id === activeId ? { ...c, position: newPosition } : c),
               };
             }),
           };
         });
       }
     },
-    [dragState.activeType, setBoard, onMoveCard, onMoveList]
+    [setBoard, onMoveCard, onMoveList]
   );
 
-  // ─── DragCancel ──────────────────────────────────
   const handleDragCancel = useCallback(() => {
-    // Rollback to pre-drag state
+    activeTypeRef.current = null;
     if (preDragBoardRef.current) {
       setBoard(preDragBoardRef.current);
       preDragBoardRef.current = null;
     }
-    setDragState({
-      activeId: null,
-      activeType: null,
-      activeCard: null,
-      activeList: null,
-      overId: null,
-      overListId: null,
-    });
+    setDragState({ activeId: null, activeType: null, activeCard: null, activeList: null });
   }, [setBoard]);
 
   return {

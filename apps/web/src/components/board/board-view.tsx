@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
   DragOverlay,
-  closestCorners,
+  closestCenter,
   MeasuringStrategy,
 } from "@dnd-kit/core";
 import {
@@ -302,7 +302,7 @@ export function BoardView({ boardId: boardIdProp }: BoardViewProps) {
       ) : (
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={closestCenter}
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
