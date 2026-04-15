@@ -1,0 +1,23 @@
+{
+  "name": "trello-clone",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Production-ready Kanban project management tool",
+  "scripts": {
+    "dev": "pnpm --parallel -r run dev",
+    "dev:api": "pnpm --filter @trello-clone/api dev",
+    "dev:web": "pnpm --filter @trello-clone/web dev",
+    "build": "pnpm -r run build",
+    "lint": "pnpm -r run lint",
+    "db:generate": "pnpm --filter @trello-clone/database generate",
+    "db:migrate": "pnpm --filter @trello-clone/database migrate",
+    "db:seed": "pnpm --filter @trello-clone/database seed",
+    "db:studio": "pnpm --filter @trello-clone/database studio",
+    "db:reset": "pnpm --filter @trello-clone/database reset",
+    "clean": "pnpm -r exec rm -rf node_modules dist .next"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

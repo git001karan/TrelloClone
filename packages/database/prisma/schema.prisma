@@ -1,0 +1,225 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────
+
+enum BoardRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum ActivityAction {
+  CARD_CREATED
+  CARD_MOVED
+  CARD_UPDATED
+  CARD_ARCHIVED
+  CARD_DELETED
+  LIST_CREATED
+  LIST_MOVED
+  LIST_ARCHIVED
+  LABEL_ADDED
+  LABEL_REMOVED
+  MEMBER_ADDED
+  MEMBER_REMOVED
+  COMMENT_ADDED
+}
+
+// ─────────────────────────────────────────────────────
+// USER
+// ─────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String   @map("password_hash")
+  avatarUrl    String?  @map("avatar_url")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  boards        Board[]        @relation("CreatedBoards")
+  memberships   BoardMember[]
+  activityLogs  ActivityLog[]
+  assignedCards CardAssignee[]
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────────────
+// BOARD
+// ─────────────────────────────────────────────────────
+
+model Board {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  background  String   @default("#1e40af")
+  isClosed    Boolean  @default(false) @map("is_closed")
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  createdBy User         @relation("CreatedBoards", fields: [createdById], references: [id])
+  members   BoardMember[]
+  lists     List[]
+  labels    Label[]
+
+  @@index([createdById])
+  @@map("boards")
+}
+
+// ─────────────────────────────────────────────────────
+// BOARD MEMBER (Many-to-Many with roles)
+// ─────────────────────────────────────────────────────
+
+model BoardMember {
+  id       String    @id @default(cuid())
+  userId   String    @map("user_id")
+  boardId  String    @map("board_id")
+  role     BoardRole @default(MEMBER)
+  joinedAt DateTime  @default(now()) @map("joined_at")
+
+  // Relations
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, boardId])
+  @@index([boardId])
+  @@map("board_members")
+}
+
+// ─────────────────────────────────────────────────────
+// LIST
+// Uses decimal positioning for drag-and-drop ordering.
+// Positions are assigned in increments of 1000 (e.g., 1000, 2000, 3000).
+// Inserting between two items: newPos = (prevPos + nextPos) / 2
+// ─────────────────────────────────────────────────────
+
+model List {
+  id         String   @id @default(cuid())
+  title      String
+  position   Float    // Decimal positioning for efficient reordering
+  isArchived Boolean  @default(false) @map("is_archived")
+  boardId    String   @map("board_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  board Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards Card[]
+
+  @@index([boardId, position]) // Composite index for sorted queries
+  @@map("lists")
+}
+
+// ─────────────────────────────────────────────────────
+// CARD
+// Uses the same decimal positioning system as Lists.
+// ─────────────────────────────────────────────────────
+
+model Card {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  position    Float     // Decimal positioning for efficient reordering
+  dueDate     DateTime? @map("due_date")
+  isArchived  Boolean   @default(false) @map("is_archived")
+  listId      String    @map("list_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  list         List           @relation(fields: [listId], references: [id], onDelete: Cascade)
+  labels       CardLabel[]
+  assignees    CardAssignee[]
+  activityLogs ActivityLog[]
+
+  @@index([listId, position]) // Composite index for sorted queries
+  @@map("cards")
+}
+
+// ─────────────────────────────────────────────────────
+// LABEL (Board-scoped)
+// ─────────────────────────────────────────────────────
+
+model Label {
+  id      String @id @default(cuid())
+  name    String
+  color   String // Hex color code (e.g., "#ef4444")
+  boardId String @map("board_id")
+
+  // Relations
+  board Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards CardLabel[]
+
+  @@index([boardId])
+  @@map("labels")
+}
+
+// ─────────────────────────────────────────────────────
+// CARD ↔ LABEL (Many-to-Many junction)
+// ─────────────────────────────────────────────────────
+
+model CardLabel {
+  cardId  String @map("card_id")
+  labelId String @map("label_id")
+
+  card  Card  @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  label Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([cardId, labelId])
+  @@map("card_labels")
+}
+
+// ─────────────────────────────────────────────────────
+// CARD ↔ USER (Assignees, Many-to-Many junction)
+// ─────────────────────────────────────────────────────
+
+model CardAssignee {
+  cardId String @map("card_id")
+  userId String @map("user_id")
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([cardId, userId])
+  @@map("card_assignees")
+}
+
+// ─────────────────────────────────────────────────────
+// ACTIVITY LOG
+// Tracks all user actions for auditing and activity feeds.
+// Uses a flexible JSON metadata field for action-specific data.
+// ─────────────────────────────────────────────────────
+
+model ActivityLog {
+  id         String         @id @default(cuid())
+  action     ActivityAction
+  entityType String         @map("entity_type") // "Card", "List", "Board"
+  entityId   String         @map("entity_id")
+  metadata   Json?          // Flexible payload: { from: "To Do", to: "In Progress" }
+  userId     String         @map("user_id")
+  cardId     String?        @map("card_id")
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  // Relations
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card Card? @relation(fields: [cardId], references: [id], onDelete: SetNull)
+
+  @@index([cardId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
