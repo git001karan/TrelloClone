@@ -1,6 +1,5 @@
-import { prisma } from "@trello-clone/database";
-import type { ActivityAction } from "@trello-clone/database";
-import type { Prisma } from "@trello-clone/database";
+import { prisma } from "../lib/prisma";
+import type { ActivityAction, Prisma } from "../lib/prisma";
 
 /**
  * Activity Log Repository — Data access layer for activity tracking.

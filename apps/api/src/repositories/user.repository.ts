@@ -1,4 +1,4 @@
-import { prisma } from "@trello-clone/database";
+import { prisma } from "../lib/prisma";
 
 /**
  * User Repository — Data access layer for users.

@@ -1,5 +1,5 @@
-import { prisma } from "@trello-clone/database";
-import type { Prisma } from "@trello-clone/database";
+import { prisma } from "../lib/prisma";
+import type { Prisma } from "../lib/prisma";
 
 /**
  * Label Repository — Data access layer for labels.
