@@ -80,9 +80,8 @@ export const CardItem = memo(function CardItem({
         "cursor-grab select-none active:cursor-grabbing",
         "card-hover-glow",
         "border border-transparent hover:border-[#091e4226]",
-        isDragging && "ring-2 ring-[#0079bf]/50",
-        isDragOverlay &&
-          "rotate-[2deg] shadow-2xl shadow-black/40 ring-2 ring-[#0079bf]/60 scale-[1.02]"
+        isDragging && "card-drag-ghost",
+        isDragOverlay && "card-dragging-overlay ring-2 ring-[#0079bf]/60"
       )}
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}

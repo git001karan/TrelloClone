@@ -8,13 +8,14 @@ import { CardItem } from "./card-item";
 import { AddCard } from "./add-card";
 import { cn } from "@/lib/utils";
 import type { DummyList } from "@/lib/dummy-data";
-import { MoreHorizontal, GripVertical } from "lucide-react";
+import { MoreHorizontal, GripVertical, Trash2 } from "lucide-react";
 
 interface ListColumnProps {
   list: DummyList;
   onAddCard: (listId: string, title: string) => void;
   onEditCard?: (cardId: string) => void;
   onUpdateTitle?: (listId: string, title: string) => void;
+  onDeleteList?: (listId: string) => void;
   isDragOverlay?: boolean;
 }
 
@@ -23,8 +24,10 @@ export const ListColumn = memo(function ListColumn({
   onAddCard,
   onEditCard,
   onUpdateTitle,
+  onDeleteList,
   isDragOverlay = false,
 }: ListColumnProps) {
+  const [showMenu, setShowMenu] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState(list.title);
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -137,13 +140,42 @@ export const ListColumn = memo(function ListColumn({
           </span>
         </div>
 
-        <button
-          type="button"
-          className="shrink-0 rounded-md p-1 text-[#5e6c84] hover:bg-black/[0.08] hover:text-[#172b4d]"
-          aria-label="List actions"
-        >
-          <MoreHorizontal className="h-4 w-4" />
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowMenu((v) => !v)}
+            className="shrink-0 rounded-md p-1 text-[#5e6c84] hover:bg-black/[0.08] hover:text-[#172b4d]"
+            aria-label="List actions"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </button>
+          {showMenu && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
+              <div className="absolute right-0 top-full z-50 mt-1 w-40 rounded-xl border border-[#dfe1e6] bg-white py-1 shadow-xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditingTitle(true);
+                    setEditTitle(list.title);
+                    setShowMenu(false);
+                  }}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[#172b4d] hover:bg-[#f4f5f7]"
+                >
+                  Rename list
+                </button>
+                <div className="my-1 border-t border-[#dfe1e6]" />
+                <button
+                  type="button"
+                  onClick={() => { onDeleteList?.(list.id); setShowMenu(false); }}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Delete list
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       <SortableContext items={cardIds} strategy={verticalListSortingStrategy}>

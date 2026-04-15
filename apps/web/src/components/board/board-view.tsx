@@ -23,6 +23,8 @@ import { useBoardMutations } from "@/hooks/use-board-mutations";
 import { useBoardDnD } from "@/hooks/use-board-dnd";
 import { useCardFilters } from "@/hooks/use-card-filters";
 import { useAuth } from "@/hooks/use-auth";
+import { useBoardSocket } from "@/hooks/use-board-socket";
+import { AppSidebar } from "@/components/layout/app-sidebar";
 import { apiGet } from "@/lib/api";
 import { boardKeys } from "@/lib/board-query-keys";
 import { mapApiBoardToDummy, type ApiBoard } from "@/lib/map-api-board";
@@ -60,6 +62,12 @@ export function BoardView({ boardId: boardIdProp }: BoardViewProps) {
     enabled: !!resolvedBoardId,
     retry: false,
   });
+
+  // Real-time sync via Socket.io
+  useBoardSocket(resolvedBoardId);
+
+  // Local background override (Change Background popover)
+  const [bgOverride, setBgOverride] = useState<string | null>(null);
 
   const board: DummyBoard = useMemo(() => {
     if (boardQuery.data) return boardQuery.data;
@@ -183,6 +191,16 @@ export function BoardView({ boardId: boardIdProp }: BoardViewProps) {
     [setBoard]
   );
 
+  const handleDeleteList = useCallback(
+    (listId: string) => {
+      setBoard((prev) => ({
+        ...prev,
+        lists: prev.lists.filter((l) => l.id !== listId),
+      }));
+    },
+    [setBoard]
+  );
+
   const selectedCard = useMemo(() => {
     if (!selectedCardId) return null;
     for (const list of board.lists) {
@@ -233,13 +251,17 @@ export function BoardView({ boardId: boardIdProp }: BoardViewProps) {
     );
   }
 
+  const activeBg = bgOverride ?? board.background;
+  const isPhotoBg = activeBg?.startsWith("url(");
+
   return (
+    <AppSidebar>
     <div
-      className="flex h-screen flex-col trello-board-bg"
+      className="flex h-full flex-col trello-board-bg"
       style={
-        {
-          "--board-accent": board.background,
-        } as React.CSSProperties
+        isPhotoBg
+          ? { background: activeBg } as React.CSSProperties
+          : { "--board-accent": activeBg } as React.CSSProperties
       }
     >
       <BoardHeader
@@ -265,6 +287,7 @@ export function BoardView({ boardId: boardIdProp }: BoardViewProps) {
         }
         onOpenActivity={() => setIsActivityOpen(true)}
         onLogout={logout}
+        onChangeBg={setBgOverride}
       />
 
       {isLoadingBoard ? (
@@ -300,6 +323,7 @@ export function BoardView({ boardId: boardIdProp }: BoardViewProps) {
                   onAddCard={handleAddCard}
                   onEditCard={(id) => setSelectedCardId(id)}
                   onUpdateTitle={handleUpdateListTitle}
+                  onDeleteList={handleDeleteList}
                 />
               ))}
               <AddList onAdd={handleAddList} />
@@ -344,5 +368,6 @@ export function BoardView({ boardId: boardIdProp }: BoardViewProps) {
         }}
       />
     </div>
+    </AppSidebar>
   );
 }

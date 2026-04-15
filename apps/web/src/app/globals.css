@@ -2,11 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
 @layer base {
   :root {
-    /* Trello-inspired surfaces (lists/cards are light on a saturated board) */
     --background: 206 26% 95%;
     --foreground: 218 54% 18%;
     --card: 0 0% 100%;
@@ -29,75 +26,85 @@
 
   * {
     @apply border-border;
+    box-sizing: border-box;
   }
 
   body {
+    /* Trello's exact font stack */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, sans-serif;
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    /* 8px base grid */
+    font-size: 14px;
+    line-height: 20px;
   }
 }
 
-/* Board canvas: saturated header color + subtle noise */
+/* ─── Board canvas ─── */
 .trello-board-bg {
   background-color: var(--board-accent, #0079bf);
   background-image:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.12) 0%, rgba(0, 0, 0, 0.22) 100%),
-    radial-gradient(1200px 400px at 10% 0%, rgba(255, 255, 255, 0.12), transparent 60%),
-    radial-gradient(800px 300px at 90% 20%, rgba(0, 0, 0, 0.15), transparent 55%);
+    linear-gradient(180deg, rgba(0,0,0,0.12) 0%, rgba(0,0,0,0.22) 100%),
+    radial-gradient(1200px 400px at 10% 0%, rgba(255,255,255,0.12), transparent 60%),
+    radial-gradient(800px 300px at 90% 20%, rgba(0,0,0,0.15), transparent 55%);
 }
 
-/* ─── Custom Scrollbar (Trello-style thin bar) ─── */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
+/* ─── Custom Scrollbar ─── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(217 33% 24%); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(217 33% 32%); }
 
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: hsl(217 33% 24%);
-  border-radius: 999px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: hsl(217 33% 32%);
-}
-
-/* ─── Board horizontal scroll container ─── */
+/* ─── Board horizontal scroll ─── */
 .board-scroll {
   overflow-x: auto;
   overflow-y: hidden;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
 }
+.board-scroll::-webkit-scrollbar { height: 8px; }
+.board-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 999px; }
 
-.board-scroll::-webkit-scrollbar {
-  height: 12px;
-}
-
-/* ─── List card container scroll ─── */
+/* ─── List card scroll ─── */
 .list-cards-scroll {
   overflow-y: auto;
   overflow-x: hidden;
   max-height: calc(100vh - 260px);
 }
+.list-cards-scroll::-webkit-scrollbar { width: 4px; }
 
-.list-cards-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-/* ─── Card hover glow effect ─── */
+/* ─── Card hover ─── */
 .card-hover-glow {
-  transition: all 0.15s ease;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.card-hover-glow:hover {
+  box-shadow: 0 1px 0 rgba(9,30,66,0.25), 0 4px 12px rgba(9,30,66,0.15);
+  transform: translateY(-1px);
 }
 
-.card-hover-glow:hover {
-  box-shadow:
-    0 1px 0 rgba(9, 30, 66, 0.25),
-    0 4px 12px rgba(9, 30, 66, 0.15);
-  transform: translateY(-1px);
+/* ─── Card drag lift: tilt + scale ─── */
+.card-dragging-overlay {
+  transform: rotate(3deg) scale(1.03);
+  box-shadow: 0 16px 40px rgba(9,30,66,0.35);
+  cursor: grabbing !important;
+}
+
+/* ─── Drag placeholder ghost ─── */
+.card-drag-ghost {
+  background: rgba(9,30,66,0.08) !important;
+  border: 2px dashed rgba(9,30,66,0.18) !important;
+  border-radius: 8px;
+  box-shadow: none !important;
+  color: transparent !important;
+}
+.card-drag-ghost * { visibility: hidden; }
+
+/* ─── Glassmorphism utility ─── */
+.glass {
+  background: rgba(255,255,255,0.10);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.12);
 }
 
 /* ─── Textarea auto-resize ─── */
@@ -105,3 +112,10 @@
   field-sizing: content;
   min-height: 32px;
 }
+
+/* ─── Popover scale-in animation ─── */
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+.animate-scale-in { animation: scale-in 0.15s ease-out; }

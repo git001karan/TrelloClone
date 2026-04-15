@@ -1,9 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: "standalone",
   transpilePackages: ["@trello-clone/shared"],
   typescript: {
-    // Allow build to complete even with type warnings from workspace packages
     ignoreBuildErrors: false,
+  },
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "images.unsplash.com" },
+    ],
   },
 };
 

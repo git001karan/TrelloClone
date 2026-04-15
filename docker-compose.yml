@@ -1,9 +1,10 @@
 version: "3.9"
 
 services:
+  # ── PostgreSQL ─────────────────────────────────────
   postgres:
     image: postgres:16-alpine
-    container_name: trello_clone_db
+    container_name: trello_db
     restart: unless-stopped
     ports:
       - "5432:5432"
@@ -17,7 +18,68 @@ services:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
+      retries: 10
+
+  # ── Prisma Migrate (runs once, then exits) ─────────
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: trello_migrate
+    command: >
+      sh -c "pnpm --filter @trello-clone/database generate &&
+             pnpm --filter @trello-clone/database exec prisma db push --skip-generate"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/trello_clone?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # ── API (Express + Socket.io) ──────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: trello_api
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/trello_clone?schema=public
+      JWT_SECRET: trello-clone-dev-secret-change-in-production-2026
+      JWT_EXPIRES_IN: 7d
+      CORS_ORIGIN: http://localhost:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
       retries: 5
+
+  # ── Web (Next.js) ──────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:4000/api
+    container_name: trello_web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   postgres_data:

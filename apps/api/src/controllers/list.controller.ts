@@ -1,10 +1,7 @@
 import { Request, Response } from "express";
 import { listService } from "../services/list.service";
+import { io } from "../server";
 
-/**
- * List Controller — HTTP request handling for lists.
- * Uses asyncHandler wrapper (no try/catch needed).
- */
 export const listController = {
   async getListsByBoard(req: Request, res: Response) {
     const lists = await listService.getListsByBoard(String(req.params.boardId), req.user!.userId);
@@ -13,6 +10,9 @@ export const listController = {
 
   async createList(req: Request, res: Response) {
     const list = await listService.createList(req.body, req.user!.userId);
+    if (list && (list as any).boardId) {
+      io.to(`board:${(list as any).boardId}`).emit("list-added", list);
+    }
     res.status(201).json({ success: true, data: list });
   },
 
@@ -23,6 +23,9 @@ export const listController = {
 
   async moveList(req: Request, res: Response) {
     const list = await listService.moveList(String(req.params.id), req.body, req.user!.userId);
+    if (list && (list as any).boardId) {
+      io.to(`board:${(list as any).boardId}`).emit("list-moved", list);
+    }
     res.json({ success: true, data: list });
   },
 
