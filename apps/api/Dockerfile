@@ -14,9 +14,9 @@ COPY packages/shared ./packages/shared
 COPY packages/database ./packages/database
 COPY apps/api ./apps/api
 
-# Generate Prisma client
 RUN pnpm --filter @trello-clone/database generate
 
 EXPOSE 4000
 
-CMD ["apps/api/node_modules/.bin/tsx", "apps/api/src/server.ts"]
+# Run db push then start server
+CMD sh -c "pnpm --filter @trello-clone/database exec prisma db push --skip-generate && apps/api/node_modules/.bin/tsx apps/api/src/server.ts"
