@@ -24,5 +24,4 @@ services:
 databases:
   - name: trello-clone-db
     databaseName: trello_clone
-    user: postgres
     plan: free
